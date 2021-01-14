@@ -1,6 +1,7 @@
 use clap::{load_yaml, App};
 use std::fs;
 extern crate regex;
+use regex::Regex;
 
 #[derive(Debug)]
 enum SpartanExpression {
@@ -22,15 +23,23 @@ impl std::fmt::Display for SpartanExpression {
 }
 
 #[derive(Debug)]
-struct SpartanExpressionError;
+struct SpartanExpressionError {
+    err: String,
+}
+
 fn str_2_spartan(
     tex_string: String,
     mut ctx: Option<Vec<String>>,
 ) -> Result<SpartanExpression, SpartanExpressionError> {
     println!("parsing {}", tex_string);
-    let mut tokens = tex_string.split(" ").collect::<Vec<&str>>();
+
+    let tokens = tex_string.split(" ").collect::<Vec<&str>>();
     match tokens[..] {
-        [] => return Err(SpartanExpressionError),
+        [] => {
+            return Err(SpartanExpressionError {
+                err: "No tokens".to_string(),
+            })
+        }
         _ => {
             println!("tokens {:?}", tokens);
             println!("context {:?}", ctx);
@@ -59,62 +68,77 @@ fn str_2_spartan(
                     return ret;
                 }
                 _ => {
-                    println!("Found value");
-                    println!("Unpacking vars, ctx: {:?}, \n tokens: {:?}", ctx, tokens);
-                    let bracketed_tokens: Vec<&str> = tokens
-                        .clone()
-                        .into_iter()
-                        .filter(|t| t.contains("(") || t.contains(")"))
-                        .collect();
-                    println!("Bracketed tokens: {:?}", bracketed_tokens);
-                    let bracket_string = &bracketed_tokens
-                        .iter()
-                        .fold(String::new(), |acc, &l| acc + " " + l);
-                    let n = bracket_string.len();
+                    println!("Found value, {:?}", tokens);
+                    let bracket_re = Regex::new(r"\([a-z A-Z()1-9]+\)").expect("A regex");
+                    let b_split: Vec<&str> = tex_string.splitn(2, "(").collect();
+                    if b_split.len() != 1 {
+                        // Brackets in expression
+                        let b_exps = b_split
+                            .into_iter()
+                            .filter(|e| e.contains("(") || e.contains(")"))
+                            .map(|e| &e[0..e.len() - 1])
+                            .collect::<Vec<&str>>();
+                        let b_exps: Vec<Vec<&str>> = b_exps
+                            .into_iter()
+                            .map(|e| e.splitn(2, " ").collect())
+                            .collect();
+                        let mut b_exps_2 = Vec::new();
+                        b_exps.into_iter().for_each(|e| b_exps_2.extend(e));
+                        b_exps_2 = b_exps_2.into_iter().filter(|e| *e != "").collect();
+                        println!("Detected bracketed expression: {:?}", b_exps_2);
 
-                    if n != 0 {
-                        let bracket_expr =
-                            str_2_spartan(bracket_string[2..n - 1].to_string(), ctx.clone());
-                        println!("Bracketed expr: {:?}", bracket_expr);
+                        let e1;
+                        let e2;
+                        e1 = Box::new(
+                            str_2_spartan(b_exps_2[0].to_string(), ctx.clone())
+                                .expect("Expression 1"),
+                        );
+                        e2 = Box::new(
+                            str_2_spartan(b_exps_2[1].to_string(), ctx.clone())
+                                .expect("Expression 2"),
+                        );
+                        let ret = SpartanExpression::APP(e1, e2);
+                        return Ok(ret);
                     }
-                    tokens = tokens
+                    let tokens: Vec<String> = tokens
                         .into_iter()
-                        .filter(|t| !(t.contains("(") || t.contains(")")) && *t != "")
+                        .map(|t| t.replace(")", ""))
+                        .filter(|t| *t != "")
                         .collect();
-
-                    match ctx {
-                        None => return Err(SpartanExpressionError),
-                        Some(ctx) => {
-                            let e1;
-                            let e2;
-                            if ctx.contains(&tokens[0].to_string()) {
-                                e1 = Box::new(SpartanExpression::Var(tokens[0].to_string()));
-                            } else {
-                                e1 = Box::new(SpartanExpression::Val(
-                                    tokens[0].parse::<i32>().expect("Vals should be i32"),
-                                ));
-                            }
-                            if ctx.contains(&tokens[1].to_string()) {
-                                e2 = Box::new(SpartanExpression::Var(tokens[1].to_string()));
-                            } else {
-                                e2 = Box::new(SpartanExpression::Val(
-                                    tokens[1].parse::<i32>().expect("Vals should be i31"),
-                                ));
-                            }
-                            let mut ret = SpartanExpression::APP(e1, e2);
+                    println!("parsing value, {:?}", tokens);
+                    if tokens.len() == 1 {
+                        println!("Single value detected, {}", tokens[0]);
+                        if ctx.unwrap_or(Vec::new()).contains(&tokens[0].to_string()) {
+                            println!("found variable");
+                            return Ok(SpartanExpression::Var(tokens[0].to_string()));
+                        } else {
+                            return Ok(SpartanExpression::Val(
+                                tokens[0].parse::<i32>().expect("Vals should be i32"),
+                            ));
+                        }
+                    } else {
+                        let e1;
+                        let e2;
+                        e1 = Box::new(
+                            str_2_spartan(tokens[0].to_string(), ctx.clone())
+                                .expect("Expression 1"),
+                        );
+                        e2 = Box::new(
+                            str_2_spartan(tokens[1].to_string(), ctx.clone())
+                                .expect("Expression 2"),
+                        );
+                        let mut ret = SpartanExpression::APP(e1, e2);
+                        if tokens.len() > 1 {
                             for i in 2..tokens.len() {
                                 let e2;
-                                if ctx.contains(&tokens[i].to_string()) {
-                                    e2 = Box::new(SpartanExpression::Var(tokens[i].to_string()));
-                                } else {
-                                    e2 = Box::new(SpartanExpression::Val(
-                                        tokens[i].parse::<i32>().expect("Vals should be i32"),
-                                    ));
-                                }
+                                e2 = Box::new(
+                                    str_2_spartan(tokens[i].to_string(), ctx.clone())
+                                        .expect("Expression 2"),
+                                );
                                 ret = SpartanExpression::APP(Box::new(ret), e2);
                             }
-                            return Ok(ret);
                         }
+                        return Ok(ret);
                     }
                 }
             }
