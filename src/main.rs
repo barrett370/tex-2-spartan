@@ -53,17 +53,26 @@ fn str_2_spartan(
                         new_ctx.extend(ctx.expect("old ctx"));
                     }
                     ctx = Some(new_ctx);
+                    if tokens.len() < 2 {
+                        println!("LAMBDA TOKENS LEN 1");
+                        return Err(SpartanExpressionError {
+                            err: String::from("Lambda tokens len 1"),
+                        });
+                    }
                     let ret = Ok(SpartanExpression::LAMBDA(
                         Box::new(SpartanExpression::Var(
                             tokens[1].replace(".", "").to_string(),
                         )),
-                        Box::new(str_2_spartan(
-                            tokens[2..]
-                                .iter()
-                                .fold(String::new(), |acc, &l| acc + " " + l)[1..]
-                                .to_string(),
-                            ctx,
-                        )?),
+                        Box::new(
+                            str_2_spartan(
+                                tokens[2..]
+                                    .iter()
+                                    .fold(String::new(), |acc, &l| acc + " " + l)[1..]
+                                    .to_string(),
+                                ctx,
+                            )
+                            .expect("A valid expression"),
+                        ),
                     ));
                     return ret;
                 }
@@ -93,12 +102,17 @@ fn str_2_spartan(
                             str_2_spartan(b_exps_2[0].to_string(), ctx.clone())
                                 .expect("Expression 1"),
                         );
-                        e2 = Box::new(
-                            str_2_spartan(b_exps_2[1].to_string(), ctx.clone())
-                                .expect("Expression 2"),
-                        );
-                        let ret = SpartanExpression::APP(e1, e2);
-                        return Ok(ret);
+
+                        if b_exps_2.len() > 1 {
+                            e2 = Box::new(
+                                str_2_spartan(b_exps_2[1].to_string(), ctx.clone())
+                                    .expect("Expression 2"),
+                            );
+                            let ret = SpartanExpression::APP(e1, e2);
+                            return Ok(ret);
+                        } else {
+                            return Ok(*e1);
+                        }
                     }
                     let tokens: Vec<String> = tokens
                         .into_iter()
