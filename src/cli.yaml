@@ -1,0 +1,15 @@
+name: tex2spartan
+version: "1.0"
+author: Sam Barrett <barrett370@gmail.com>
+about: Converts latex math expressions into SPARTAN code
+args:
+  - file:
+      short: f
+      long: file
+      value_name: FILE
+      takes_value: true
+  - string:
+      short: s
+      long: string
+      value_name: LATEX_STRING
+      takes_value: true

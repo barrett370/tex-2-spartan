@@ -1,0 +1,1 @@
+\lambda y. (\lambda f. t (\lambda z. f f z)) (\lambda f. t (\lambda z. f f z))
